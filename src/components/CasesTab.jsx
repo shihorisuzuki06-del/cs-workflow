@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { archiveCase, updateCase, saveCase, getCategories, getHistory } from '../lib/storage.js'
 import CaseFormModal from './CaseFormModal.jsx'
 import HistoryModal from './HistoryModal.jsx'
+import CsvImportModal from './CsvImportModal.jsx'
 
 function highlight(text, keyword) {
   if (!keyword.trim()) return text
@@ -27,6 +28,7 @@ export default function CasesTab({ cases, onRefresh }) {
   const [selectedCategory, setSelectedCategory] = useState('すべて')
   const [expandedId, setExpandedId] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [editingCase, setEditingCase] = useState(null)
   const [historyCase, setHistoryCase] = useState(null)
   const [historyData, setHistoryData] = useState([])
@@ -91,6 +93,12 @@ export default function CasesTab({ cases, onRefresh }) {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg px-4 py-2 border border-gray-300 transition-colors whitespace-nowrap"
+          >
+            CSVインポート
+          </button>
           <button
             onClick={() => setShowAddModal(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors whitespace-nowrap"
@@ -214,6 +222,13 @@ export default function CasesTab({ cases, onRefresh }) {
       )}
 
       {/* Modals */}
+      {showImportModal && (
+        <CsvImportModal
+          onImported={() => { onRefresh() }}
+          onClose={() => setShowImportModal(false)}
+        />
+      )}
+
       {showAddModal && (
         <CaseFormModal onSave={handleAddSave} onClose={() => setShowAddModal(false)} />
       )}
