@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { deleteCase, getCategories } from '../lib/storage.js'
+import { archiveCase, updateCase, saveCase, getCategories, getHistory } from '../lib/storage.js'
+import CaseFormModal from './CaseFormModal.jsx'
+import HistoryModal from './HistoryModal.jsx'
 
 function highlight(text, keyword) {
   if (!keyword.trim()) return text
@@ -15,10 +17,19 @@ function highlight(text, keyword) {
   )
 }
 
-export default function CasesTab({ cases, onDeleted }) {
+function formatDate(iso) {
+  if (!iso) return '-'
+  return new Date(iso).toLocaleDateString('ja-JP')
+}
+
+export default function CasesTab({ cases, onRefresh }) {
   const [keyword, setKeyword] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('すべて')
   const [expandedId, setExpandedId] = useState(null)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [editingCase, setEditingCase] = useState(null)
+  const [historyCase, setHistoryCase] = useState(null)
+  const [historyData, setHistoryData] = useState([])
 
   const categories = getCategories(cases)
 
@@ -33,18 +44,35 @@ export default function CasesTab({ cases, onDeleted }) {
     return matchCat && matchKw
   })
 
-  function handleDelete(id) {
-    if (!confirm('この事例を削除しますか？')) return
-    deleteCase(id)
-    onDeleted()
+  function handleArchive(id) {
+    if (!confirm('この事例をアーカイブしますか？（一覧から非表示になります）')) return
+    archiveCase(id)
+    onRefresh()
     if (expandedId === id) setExpandedId(null)
+  }
+
+  function handleAddSave(data) {
+    saveCase(data)
+    setShowAddModal(false)
+    onRefresh()
+  }
+
+  function handleEditSave(data) {
+    updateCase(editingCase.id, data)
+    setEditingCase(null)
+    onRefresh()
+  }
+
+  function handleViewHistory(c) {
+    setHistoryData(getHistory(c.id))
+    setHistoryCase(c)
   }
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
+      {/* Filters + Add button */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
-        <div className="flex gap-3 flex-wrap">
+        <div className="flex gap-3 flex-wrap items-center">
           <input
             type="text"
             value={keyword}
@@ -63,6 +91,12 @@ export default function CasesTab({ cases, onDeleted }) {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors whitespace-nowrap"
+          >
+            + 手動で追加
+          </button>
         </div>
         <p className="text-xs text-gray-500">{filtered.length} 件の事例</p>
       </div>
@@ -76,6 +110,7 @@ export default function CasesTab({ cases, onDeleted }) {
         <div className="space-y-3">
           {filtered.map((c) => {
             const isExpanded = expandedId === c.id
+            const hasBeenUpdated = c.updatedAt && c.updatedAt !== c.createdAt
             return (
               <div
                 key={c.id}
@@ -98,9 +133,16 @@ export default function CasesTab({ cases, onDeleted }) {
                     <p className="text-xs text-gray-500 truncate">
                       {highlight(c.inquiry, keyword)}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(c.createdAt).toLocaleDateString('ja-JP')}
-                    </p>
+                    <div className="flex gap-3 mt-1 flex-wrap">
+                      <p className="text-xs text-gray-400">
+                        作成日: {formatDate(c.createdAt)}
+                      </p>
+                      {hasBeenUpdated && (
+                        <p className="text-xs text-gray-400">
+                          更新日: {formatDate(c.updatedAt)}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="flex-shrink-0 text-gray-400 text-sm select-none">
                     {isExpanded ? '▲' : '▼'}
@@ -134,12 +176,33 @@ export default function CasesTab({ cases, onDeleted }) {
                       </div>
                     )}
 
-                    <div className="pt-1">
+                    <div className="flex gap-4 pt-2 border-t border-gray-100 flex-wrap">
                       <button
-                        onClick={() => handleDelete(c.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingCase(c)
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 transition-colors font-medium"
+                      >
+                        編集
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleViewHistory(c)
+                        }}
+                        className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                      >
+                        履歴を見る
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleArchive(c.id)
+                        }}
                         className="text-xs text-red-500 hover:text-red-700 transition-colors"
                       >
-                        削除
+                        アーカイブ
                       </button>
                     </div>
                   </div>
@@ -148,6 +211,30 @@ export default function CasesTab({ cases, onDeleted }) {
             )
           })}
         </div>
+      )}
+
+      {/* Modals */}
+      {showAddModal && (
+        <CaseFormModal onSave={handleAddSave} onClose={() => setShowAddModal(false)} />
+      )}
+
+      {editingCase && (
+        <CaseFormModal
+          initial={editingCase}
+          onSave={handleEditSave}
+          onClose={() => setEditingCase(null)}
+        />
+      )}
+
+      {historyCase && (
+        <HistoryModal
+          caseItem={historyCase}
+          history={historyData}
+          onClose={() => {
+            setHistoryCase(null)
+            setHistoryData([])
+          }}
+        />
       )}
     </div>
   )

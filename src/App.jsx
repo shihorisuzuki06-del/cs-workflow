@@ -59,10 +59,10 @@ export default function App() {
           <ProposalTab cases={cases} onCaseSaved={refreshCases} />
         )}
         {activeTab === 'cases' && (
-          <CasesTab cases={cases} onDeleted={refreshCases} />
+          <CasesTab cases={cases} onRefresh={refreshCases} />
         )}
         {activeTab === 'flow' && (
-          <FlowTab cases={cases} />
+          <FlowTab cases={cases} onCaseUpdated={refreshCases} />
         )}
       </main>
     </div>
