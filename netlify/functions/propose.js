@@ -1,29 +1,98 @@
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions'
 const MODEL = 'google/gemini-2.0-flash-001'
+const ALLOWED_ORIGIN = 'https://whimsical-jalebi-97dbd3.netlify.app'
 
+// ── 1. レート制限 ────────────────────────────────────────────
+// キー: IP、値: { count, resetAt }
+const rateLimitStore = new Map()
+const RATE_LIMIT = 10       // 最大リクエスト数
+const RATE_WINDOW = 60_000  // ウィンドウ幅（ms）
+
+function isRateLimited(ip) {
+  const now = Date.now()
+  const entry = rateLimitStore.get(ip)
+
+  if (!entry || now >= entry.resetAt) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_WINDOW })
+    return false
+  }
+  if (entry.count >= RATE_LIMIT) return true
+  entry.count++
+  return false
+}
+
+// ── ヘルパー ─────────────────────────────────────────────────
+function corsHeaders(origin) {
+  // 3. CORS: 許可オリジンのみ Access-Control-Allow-Origin を返す
+  const allowed = origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  }
+}
+
+function json(statusCode, payload, origin) {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    body: JSON.stringify(payload),
+  }
+}
+
+// ── ハンドラー ────────────────────────────────────────────────
 exports.handler = async (event) => {
+  const origin = event.headers?.origin ?? ''
+
+  // preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: corsHeaders(origin), body: '' }
+  }
+
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' }
+    return json(405, { error: 'Method Not Allowed' }, origin)
+  }
+
+  // 3. CORS: 許可されていないオリジンはここで弾く
+  if (origin && origin !== ALLOWED_ORIGIN) {
+    return json(403, { error: 'Forbidden' }, origin)
+  }
+
+  // 1. レート制限
+  const ip =
+    event.headers?.['x-forwarded-for']?.split(',')[0].trim() ??
+    event.headers?.['client-ip'] ??
+    'unknown'
+
+  if (isRateLimited(ip)) {
+    return json(429, { error: 'Too many requests. Please wait a moment.' }, origin)
   }
 
   const apiKey = process.env.CS_FLOW_OPENROUTER_KEY
   if (!apiKey) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'API key not configured on server' }),
-    }
+    // 4. 内部エラーは詳細を隠す
+    return json(500, { error: 'Server configuration error.' }, origin)
   }
 
+  // JSON パース
   let body
   try {
     body = JSON.parse(event.body)
   } catch {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body' }) }
+    return json(400, { error: 'Invalid request format.' }, origin)
   }
 
   const { inquiry, category, cases = [] } = body
-  if (!inquiry || !category) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'inquiry and category are required' }) }
+
+  // 2. 入力バリデーション
+  if (!inquiry || inquiry.trim().length === 0) {
+    return json(400, { error: 'お問い合わせ内容を入力してください。' }, origin)
+  }
+  if (inquiry.length > 1000) {
+    return json(400, { error: 'お問い合わせ内容は1000文字以内で入力してください。' }, origin)
+  }
+  if (!category) {
+    return json(400, { error: 'カテゴリを選択してください。' }, origin)
   }
 
   const systemPrompt = `あなたはカスタマーサポート（CS）チームの対応支援AIです。
@@ -84,23 +153,17 @@ ${inquiry}
     })
 
     if (!response.ok) {
+      // 4. 上流エラーの詳細はログに留め、ユーザーには汎用メッセージを返す
       const err = await response.json().catch(() => ({}))
-      return {
-        statusCode: response.status,
-        body: JSON.stringify({ error: err?.error?.message || `OpenRouter error: ${response.status}` }),
-      }
+      console.error('OpenRouter error:', response.status, err)
+      return json(502, { error: 'AI サービスとの通信に失敗しました。しばらく経ってから再試行してください。' }, origin)
     }
 
     const data = await response.json()
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }
+    return json(200, data, origin)
   } catch (err) {
-    return {
-      statusCode: 502,
-      body: JSON.stringify({ error: err.message || 'Failed to reach OpenRouter' }),
-    }
+    // 4. スタックトレース等は返さない
+    console.error('Unhandled error in propose:', err)
+    return json(502, { error: 'サーバーエラーが発生しました。しばらく経ってから再試行してください。' }, origin)
   }
 }
