@@ -8,11 +8,19 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    netlifyIdentity.init()
+    const options = import.meta.env.VITE_NETLIFY_IDENTITY_URL
+      ? { APIUrl: import.meta.env.VITE_NETLIFY_IDENTITY_URL }
+      : {}
+    netlifyIdentity.init(options)
 
-    const currentUser = netlifyIdentity.currentUser()
-    setUser(currentUser)
-    setLoading(false)
+    netlifyIdentity.on('init', (u) => {
+      setUser(u ?? null)
+      setLoading(false)
+    })
+
+    netlifyIdentity.on('error', () => {
+      setLoading(false)
+    })
 
     netlifyIdentity.on('login', (u) => {
       setUser(u)
@@ -21,8 +29,10 @@ export function AuthProvider({ children }) {
     netlifyIdentity.on('logout', () => setUser(null))
 
     return () => {
+      netlifyIdentity.off('init')
       netlifyIdentity.off('login')
       netlifyIdentity.off('logout')
+      netlifyIdentity.off('error')
     }
   }, [])
 
