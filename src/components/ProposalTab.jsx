@@ -2,19 +2,19 @@ import { useState } from 'react'
 import { proposeProcedure } from '../lib/anthropic.js'
 import { saveCase } from '../lib/storage.js'
 
+// value はサーバーの許可リストと一致させる
 const CATEGORIES = [
-  'ログイン・認証',
-  '料金・請求',
-  '機能の使い方',
-  '技術的な問題',
-  'アカウント管理',
-  '解約・退会',
-  'その他',
+  { value: 'login',   label: 'ログイン・認証' },
+  { value: 'payment', label: '料金・請求' },
+  { value: 'feature', label: '機能の使い方' },
+  { value: 'bug',     label: '技術的な問題' },
+  { value: 'account', label: 'アカウント管理' },
+  { value: 'other',   label: '解約・退会・その他' },
 ]
 
 export default function ProposalTab({ cases, onCaseSaved }) {
   const [inquiry, setInquiry] = useState('')
-  const [category, setCategory] = useState(CATEGORIES[0])
+  const [category, setCategory] = useState(CATEGORIES[0].value)
   const [loading, setLoading] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [result, setResult] = useState(null)
@@ -71,8 +71,8 @@ export default function ProposalTab({ cases, onCaseSaved }) {
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {CATEGORIES.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
+              <option key={cat.value} value={cat.value}>
+                {cat.label}
               </option>
             ))}
           </select>

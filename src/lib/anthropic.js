@@ -1,7 +1,17 @@
+import netlifyIdentity from 'netlify-identity-widget'
+
+function getAuthHeaders() {
+  const token = netlifyIdentity.currentUser()?.token?.access_token
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 export async function proposeProcedure({ inquiry, category, cases }, onChunk) {
   const response = await fetch('/api/propose', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
     body: JSON.stringify({ inquiry, category, cases }),
   })
 
