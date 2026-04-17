@@ -11,24 +11,25 @@ export function AuthProvider({ children }) {
     const options = import.meta.env.VITE_NETLIFY_IDENTITY_URL
       ? { APIUrl: import.meta.env.VITE_NETLIFY_IDENTITY_URL }
       : {}
-    netlifyIdentity.init(options)
+    // init() より前にリスナーを登録しないとイベントを見逃す
+    const fallback = setTimeout(() => setLoading(false), 3000)
 
     netlifyIdentity.on('init', (u) => {
+      clearTimeout(fallback)
       setUser(u ?? null)
       setLoading(false)
     })
-
     netlifyIdentity.on('error', () => {
+      clearTimeout(fallback)
       setLoading(false)
     })
 
-    netlifyIdentity.on('login', (u) => {
-      setUser(u)
-      netlifyIdentity.close()
-    })
+    netlifyIdentity.init(options)
+    netlifyIdentity.on('login', (u) => { setUser(u); netlifyIdentity.close() })
     netlifyIdentity.on('logout', () => setUser(null))
 
     return () => {
+      clearTimeout(fallback)
       netlifyIdentity.off('init')
       netlifyIdentity.off('login')
       netlifyIdentity.off('logout')
